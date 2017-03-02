@@ -10,6 +10,8 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   message_generation
+  nav_msgs
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -49,13 +51,17 @@ find_package(catkin REQUIRED COMPONENTS
  add_message_files(
   FILES
    peopleData.msg
-   peopleHallwayFeatures.msg
+   sanData.msg
+   newMarkerMsg.msg
  )
 
 ## Generate services in the 'srv' folder
  add_service_files( 	
    FILES
-   Service1.srv
+   TrajectoryPoint.srv
+   Features.srv
+   Trajectory.srv 
+   
  )
 
 ## Generate actions in the 'action' folder
@@ -69,6 +75,7 @@ find_package(catkin REQUIRED COMPONENTS
 generate_messages(
   DEPENDENCIES
    std_msgs  # Or other packages containing msgs
+   geometry_msgs
 )
 
 ################################################
@@ -130,15 +137,20 @@ include_directories(
 
 ## Declare a C++ executable
 add_executable(san_feature_extractor src/san_feature_extractor.cpp)
+add_executable(newMarkers src/newMarkers.cpp)
+add_executable(tfBroadcaster src/tfBroadcaster)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(san_feature_extractor_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+##add_dependencies(newMarkers san_feature_extractor_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(san_feature_extractor 
    ${catkin_LIBRARIES}
  )
+target_link_libraries(newMarkers ${catkin_LIBRARIES})
+target_link_libraries(tfBroadcaster ${catkin_LIBRARIES})
 
 #############
 ## Install ##
