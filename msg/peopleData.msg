@@ -1,6 +1,6 @@
 string frame_id
 string personId    #Unique id assigned for each person
-float32 distanceFromPR2  #Distance between the person and PR2 base
+#float32 distanceFromPR2  #Distance between the person and PR2 base
 float64 t0		   	
 float64 t1
 float32 x #Position (x)

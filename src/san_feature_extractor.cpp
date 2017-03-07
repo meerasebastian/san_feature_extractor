@@ -4,407 +4,603 @@
 
 #include <people_msgs/PositionMeasurement.h>
 #include <people_msgs/PositionMeasurementArray.h>
+
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <nav_msgs/Odometry.h>
 #include <sensor_msgs/LaserScan.h>
 #include <visualization_msgs/Marker.h>
-#include<geometry_msgs/Point32.h>
 
-#include<san_feature_extractor/peopleData.h>
-#include<san_feature_extractor/peopleHallwayFeatures.h>
-#include<hallway/hallwayMsg.h>
+#include <geometry_msgs/Point32.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PointStamped.h>
 
-#include<string.h>
-#include<math.h>
-#include<fstream>
-#include<ctime>
+#include <san_feature_extractor/peopleData.h>
+#include <san_feature_extractor/sanData.h>
+#include <san_feature_extractor/TrajectoryPoint.h>
+#include <san_feature_extractor/Trajectory.h>
+#include <san_feature_extractor/Features.h>
+#include <san_feature_extractor/newMarkerMsg.h>
+
+#include <hallway/hallwayMsg.h>
+
+#include <san_nodes/Appscore.h>
+#include <san_nodes/Classify.h>
+
+#include <tf/transform_listener.h>
+
+#include <string.h>
+#include <math.h>
+#include <fstream>
+#include <ctime>
 
 
 using namespace std;
 
 struct personDetails{
-  string frame_id;
-  string  personId;
-  float distanceFromPR2;
-  float distance_travelled;
-  double posx, posy;
-  double t0, t1, speed, xdistance, ydistance;
-}peopleData[100]; 
-
-struct hallwayDetails{
-  float  m; //Slope of Left Hallway
-  float c; //Intercept of Left Hallway
-  float width; //Width of the Hallway
-}hallwayData;
+  	string frame_id;
+  	string  personId;
+  	//float distanceFromPR2;
+  	float distance_travelled;
+  	double posx, posy;
+  	double t0, t1, speed, xdistance, ydistance;
+}personData; 
 
 string peoplename[100];
-int personFound = 0
+int personFound = 0, hallwayFound = 0;
 
-int noOfPeople = 0, flag = 0, trajectory = 0, peopleFlag = 0, trajectoryPeopleFlag = 0, firstPersonNo = 0, tracetoryFirstPersonNo = 0;
-float robotPositionX = 0, robotPositionY = 0;
+ros::ServiceClient clientClassify;
+ros::ServiceClient clientAppscore;
+
+vector<string> SANfeatures;
+
+int flag = 0, robotFound = 0;
+float personInitialX = 0, personInitialY = 0, currentRobotPositionX = 0; 
+float odom_0_OriginX = 0, odom_0_OriginY = 0, odom_1_OriginX = 0, odom_1_OriginY = 0;
+float m = 0 ,c = 0, width = 0;
+float poseX = 0, poseY = 0, intialPoseX = 0 , intialPoseY = 0, goalPoseX = 0 , goalPoseY = 0; 
+
+//geometry_msgs::Point robotPosition;
+geometry_msgs::Point robotGoalPosition;
+/*geometry_msgs::Point robotFuturePosition;
+
+geometry_msgs::Point test;
+
+geometry_msgs::PointStamped testrobotPose;
+geometry_msgs::PointStamped testtransformedRobotPose;*/
+
+geometry_msgs::Point hallwayPointL1;
+geometry_msgs::Point hallwayPointL2; 
+
+geometry_msgs::PointStamped hallwayPoints1;
+geometry_msgs::PointStamped transformedHallwayPoints1;
+
+geometry_msgs::PointStamped hallwayPoints2;
+geometry_msgs::PointStamped transformedHallwayPoints2;
+
+/*geometry_msgs::PointStamped personPose;
+geometry_msgs::PointStamped transformedPersonPose;
+
+geometry_msgs::PointStamped robotInitialPose;
+geometry_msgs::PointStamped transformedRobotInitialPose;
+
+geometry_msgs::PointStamped robotGoalPose;
+geometry_msgs::PointStamped transformedRobotGoalPose;
+
+geometry_msgs::PointStamped robotPose;
+geometry_msgs::PointStamped transformedRobotPose;*/
+
 double currentTime, startTime;
-double trajectoryCurrentTime, trajectoryStartTime;
-//time_t now = time(0);
-//char* dt = ctime(&now);
-//strcat(dt,".txt");
+
 ofstream outfile ("Dataset1.txt");
 ofstream testfile ("Testdataset1.txt");
 
 ofstream trajectoryOutfile ("TrajectoryDataset1.txt");
 ofstream trajectoryTestfile ("TrajectoryTestdataset1.txt");
 
-ros::Publisher people_features, hallway_pub;
+ros::Publisher people_features, san_features, start_cmd;
+ros::Publisher new_Marker, move_to_goal;
 san_feature_extractor::peopleData personDetails;
+san_feature_extractor::sanData sanDetails;
 
 geometry_msgs::Point robot_pose;
 
 string Convert (float number){
-  ostringstream buff;
-  buff<<number;
-  return buff.str();   
+	ostringstream buff;
+	buff<<number;
+	return buff.str();   
 }
 
-void peoplePositionCallback(const people_msgs::PositionMeasurementArray::ConstPtr& msg){
-  for( int i = 0; i < msg->people.size(); i++ ){
-    if(personFound == 0){
-      
-    }
+//To transform a point to target frame from fixed frame
+void transformPoint(const tf::TransformListener& listener){
+  
+  hallwayPoints1.header.frame_id = "/robot_0/base_laser_link";
+  hallwayPoints1.header.stamp = ros::Time();
+  hallwayPoints1.point.x = hallwayPointL1.x;
+  hallwayPoints1.point.y = hallwayPointL1.y;
+  hallwayPoints1.point.z = 0.0;
+
+  hallwayPoints2.header.frame_id = "/robot_0/base_laser_link";
+  hallwayPoints2.header.stamp = ros::Time();
+  hallwayPoints2.point.x = hallwayPointL2.x;
+  hallwayPoints2.point.y = hallwayPointL2.y;
+  hallwayPoints2.point.z = 0.0;
+
+  /*personPose.header.frame_id = "/robot_1/odom";
+  personPose.header.stamp = ros::Time();
+  personPose.point.x = personData.posx;
+  personPose.point.y = personData.posy;
+  personPose.point.z = 0.0;
+
+  robotInitialPose.header.frame_id = "/robot_0/odom";
+  robotInitialPose.header.stamp = ros::Time();
+  robotInitialPose.point.x = robotPosition.x;
+  robotInitialPose.point.y = robotPosition.y;
+  robotInitialPose.point.z = 0.0;
+
+  robotGoalPose.header.frame_id = "/robot_0/odom";
+  robotGoalPose.header.stamp = ros::Time();
+  robotGoalPose.point.x = robotGoalPosition.x;
+  robotGoalPose.point.y = robotGoalPosition.y;
+  robotGoalPose.point.z = 0.0;
+  
+  robotPose.header.frame_id = "/robot_0/odom";
+  robotPose.header.stamp = ros::Time();
+  robotPose.point.x = robotFuturePosition.x;
+  robotPose.point.y = robotFuturePosition.y;
+  robotPose.point.z = 0.0;
+
+
+  testrobotPose.header.frame_id = "/robot_0/odom";
+  testrobotPose.header.stamp = ros::Time();
+  testrobotPose.point.x = test.x;
+  testrobotPose.point.y = test.y;
+  testrobotPose.point.z = 0.0;*/
+
+  try{
+
+    //Need to transform hallway points from /robot_0/base_laser_link to /world
+
+    listener.transformPoint("/robot_0/odom", hallwayPoints1, transformedHallwayPoints1);
+    ROS_INFO("Hallway Point 1: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        hallwayPoints1.point.x, hallwayPoints1.point.y, hallwayPoints1.point.z,
+        transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints1.point.z, transformedHallwayPoints1.header.stamp.toSec());
+
+    //listener.transformPoint("/robot_0/odom", hallwayPoints2, transformedHallwayPoints2); 
+    //ROS_INFO("Hallway Point 2: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        //hallwayPoints2.point.x, hallwayPoints2.point.y, hallwayPoints2.point.z,
+        //transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y, transformedHallwayPoints2.point.z, transformedHallwayPoints2.header.stamp.toSec());
+
+    //Not required: Person and robot positions are now rbased on world frame
+
+    /*Listener.transformPoint("/map", personPose, transformedPersonPose); 
+    ROS_INFO("Person Position: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        personPose.point.x, personPose.point.y, personPose.point.z,
+        transformedPersonPose.point.x, transformedPersonPose.point.y, transformedPersonPose.point.z, transformedPersonPose.header.stamp.toSec());
+
+    listener.transformPoint("/map", robotInitialPose, transformedRobotInitialPose); 
+    ROS_INFO("Robot Initial Position: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        robotInitialPose.point.x, robotInitialPose.point.y, robotInitialPose.point.z,
+        transformedRobotInitialPose.point.x, transformedRobotInitialPose.point.y, transformedRobotInitialPose.point.z, transformedRobotInitialPose.header.stamp.toSec());
+
+    listener.transformPoint("/map", robotGoalPose, transformedRobotGoalPose); 
+    ROS_INFO("Robot Goal Position: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        robotGoalPose.point.x, robotGoalPose.point.y, robotGoalPose.point.z,
+        transformedRobotGoalPose.point.x, transformedRobotGoalPose.point.y, transformedRobotGoalPose.point.z, transformedRobotGoalPose.header.stamp.toSec());
+
+    listener.transformPoint("/map", testrobotPose, testtransformedRobotPose); 
+    ROS_INFO("Test Robot Position: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        testrobotPose.point.x, testrobotPose.point.y, testrobotPose.point.z,
+        testtransformedRobotPose.point.x, testtransformedRobotPose.point.y, testtransformedRobotPose.point.z, testtransformedRobotPose.header.stamp.toSec());*/
+
+  }
+  catch(tf::TransformException& ex){
+    ROS_ERROR("Received an exception trying to transform a point from \"robot_0\"base_laser_link\" to \"map\": %s", ex.what());
   }
 }
 
-/*void peoplePositionCallback(const people_msgs::PositionMeasurementArray::ConstPtr& msg){
+//Function to get the current position of the robot
+void robotPositionCallback ( const nav_msgs::Odometry::ConstPtr& msg  ){
+ 
+  poseX = msg->pose.pose.position.x;//In m to cm
+  poseY = msg->pose.pose.position.y; //In m
+
+  //test.x = poseX;
+  //test.y = poseY;
+  //test.z = 0;
+}
+
+
+void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg){
+  std_msgs::String navMsg;  
+  ROS_INFO("In pose estimate callback");
+  geometry_msgs::PoseStamped goalPosition; 
+
+  robotGoalPosition.x = 59.054;
+  robotGoalPosition.y = 10.257;
+  robotGoalPosition.z = 0;
   
-  int newPersonFound = 0;
-  float currentDistance;
-  std::vector<people_msgs::PositionMeasurement> people;
+  goalPosition.header.frame_id = "map";
+  goalPosition.pose.position.x = 59.054;
+  goalPosition.pose.position.y = 10.257;
+  goalPosition.pose.position.z = 0;
+
+  goalPosition.pose.orientation.x = 0;
+  goalPosition.pose.orientation.y = 0;
+  goalPosition.pose.orientation.z = -0.006;
+  goalPosition.pose.orientation.w = 0.999;
+
+
+  goalPoseX = goalPosition.pose.position.x * 100;//In cm
+  goalPoseY = goalPosition.pose.position.y * 100;//In cm
+
+  //goalPoseX = transformedRobotGoalPose.point.x * 100;//In cm 
+  //goalPoseY = transformedRobotGoalPose.point.y * 100;//In cm
+
+  move_to_goal.publish(goalPosition);
+
+  //robotPosition.x = poseX;
+  //robotPosition.y = poseY; 
+  //robotPosition.z = 0;
+
+  //intialPoseX = transformedRobotInitialPose.point.x * 100;
+  //intialPoseY = transformedRobotInitialPose.point.y * 100;
+
+  intialPoseX = poseX;
+  intialPoseY = poseY;
   
-  for( int i = 0; i < msg->people.size(); i++ ){
-    for( int j = 0; j < noOfPeople; j++){
-      newPersonFound = 0;
-      
-      //Tracking the person
-      if( strcmp(msg->people[i].name.c_str() , peopleData[j].personId.c_str()) == 0 ) {
+  //Start command to start the human simulation
+  navMsg.data = "Start";
+  start_cmd.publish(navMsg);
+}
+
+//For Simulation - Person Detection
+void personPositionCallback ( const nav_msgs::Odometry::ConstPtr& msg ){
+	float currentDistance;
+	//Topic is not publishing an id. 
+	personData.personId = "Person1";
+
+  personData.posx =  msg->pose.pose.position.x; //In m
+  personData.posy = msg->pose.pose.position.y; //In m
+
+  //ROS_INFO("Person  : (%f , %f)", personData.posx, personData.posy);
+
+  //personData.xdistance = transformedPersonPose.point.x * 100 ; //In cm
+  //personData.ydistance = transformedPersonPose.point.y * 100; //In cm
+
+  personData.xdistance = msg->pose.pose.position.x * 100;
+  personData.ydistance = msg->pose.pose.position.y * 100;
+
+  if( personFound == 0 ){
+    personData.t0 = ros::Time::now().toSec();
+    personData.t1 = ros::Time::now().toSec();
+    personInitialX = personData.xdistance;
+    personInitialY = personData.ydistance;
+    personData.distance_travelled = 0.0;
+  	personData.speed = 0.0;    
+   	personFound = 1;
+	}
+	else{
+		personData.distance_travelled = sqrt(pow((personData.xdistance - personInitialX ),2)+pow((personData.ydistance - personInitialY ),2));
+    //personData.distanceFromPR2 = currentDistance;
+    personData.t0 =  personData.t1; 
+    personData.t1 = ros::Time::now().toSec();
         
-        if(peopleData[j].xdistance!=msg->people[i].pos.x && peopleData[j].ydistance!=msg->people[i].pos.y){
-          //ROS_INFO("\n\tPerson Details ");
-          //ROS_INFO("Person Id : %s", peopleData[j].personId.c_str());
-          //ROS_INFO("Previous Distance : %f", sqrt(pow(peopleData[j].xdistance,2) + pow(peopleData[j].ydistance,2)));
-          
-          peopleData[j].xdistance = 100 * msg->people[i].pos.x; //Converting m to cm
-          peopleData[j].ydistance = 100 * msg->people[i].pos.y; //Converting m to cm
-          peopleData[j].posx =  100 * msg->people[i].pos.x; //Converting m to cm
-          peopleData[j].posy = 100 * msg->people[i].pos.y; //Converting m to cm
-          currentDistance = sqrt(pow((peopleData[j].xdistance - robotPositionX),2)+pow((peopleData[j].ydistance - robotPositionY),2));
-          peopleData[j].distance_travelled =  abs(currentDistance - peopleData[j].distanceFromPR2);
-          peopleData[j].distanceFromPR2 = currentDistance;
-          peopleData[j].t0 =  peopleData[j].t1; 
-          peopleData[j].t1 = ros::Time::now().toSec();
-          peopleData[j].speed =  peopleData[j].distance_travelled / ( peopleData[j].t1 -  peopleData[j].t0);
-          
-          //ROS_INFO("Time T0 : %f", peopleData[j].t0);
-          //ROS_INFO("Time T1 : %f", peopleData[j].t1);
-          //ROS_INFO("Speed : %f", peopleData[j].speed);
-          //ROS_INFO("Distance travelled : %f", peopleData[j].distance_travelled);
-          
-          //Publish the details
-          personDetails.frame_id = "base_link";
-          personDetails.personId = peopleData[j].personId; 
-          personDetails.distanceFromPR2 = peopleData[j].distanceFromPR2;
-          personDetails.x = peopleData[j].posx;
-          personDetails.y = peopleData[j].posy;
-          personDetails.t0 = peopleData[j].t0; 
-          personDetails.t1 = peopleData[j].t1;
-          personDetails.xdistance = peopleData[j].xdistance;
-          personDetails.ydistance = peopleData[j].ydistance;
-          personDetails.distance_travelled = peopleData[j].distance_travelled; 
-          personDetails.speed = peopleData[j].speed;
-          people_features.publish(personDetails);  
-          
-          newPersonFound = 1;
-          break;  
-        }
+    personData.speed =  personData.distance_travelled / ( personData.t1 - personData.t0);
+    personInitialX = personData.xdistance;
+    personInitialY = personData.ydistance; 
+	}
+    
+  /*ROS_INFO("Person  : (%f , %f)", personData.posx, personData.posy);
+  ROS_INFO("Distance travelled : %f", personData.distance_travelled); 
+  ROS_INFO("Speed : %f", personData.speed);*/
+  
+}
+
+//For live Data - Person Detection
+void peoplePositionCallback(const people_msgs::PositionMeasurementArray::ConstPtr& msg){
+
+	float currentDistance;
+  std::vector<people_msgs::PositionMeasurement> people;
+
+  if( personFound == 0 ){
+    personData.personId = msg->people[0].name.c_str();
+    personData.t0 = ros::Time::now().toSec();
+    personData.t1 = ros::Time::now().toSec();
+  	personData.xdistance = 100 * msg->people[0].pos.x; //Converting m to cm
+    personData.ydistance = 100 * msg->people[0].pos.y; //Converting m to cm
+    personData.posx =  100 * msg->people[0].pos.x; //Converting m to cm
+    personData.posy = 100 * msg->people[0].pos.y; //Converting m to cm
+    personInitialX = personData.posx;
+    personInitialY = personData.posy;
+    personData.distance_travelled = 0.0;
+    personData.speed = 0.0;    
+    personFound = 1;
+  }
+  else{
+    for( int i = 0; i < msg->people.size(); i++ )
+    {
+      if( strcmp(msg->people[i].name.c_str() , personData.personId.c_str()) == 0 ) {
+	      personData.xdistance = 100 * msg->people[i].pos.x; //Converting m to cm
+    	  personData.ydistance = 100 * msg->people[i].pos.y; //Converting m to cm
+        personData.posx =  100 * msg->people[i].pos.x; //Converting m to cm
+        personData.posy = 100 * msg->people[i].pos.y; //Converting m to cm
+        personData.distance_travelled = sqrt(pow((personData.xdistance - personInitialX ),2)+pow((personData.ydistance - personInitialX ),2));
+        //personData.distanceFromPR2 = currentDistance;
+    	  personData.t0 =  personData.t1; 
+	      personData.t1 = ros::Time::now().toSec();
+        personData.speed =  personData.distance_travelled / ( personData.t1 - personData.t0);
       }
     }
-    
-    //Push the details of new person
-    if(newPersonFound == 0){
-      peopleData[noOfPeople].frame_id = "base_link";
-      //Extract Person Id(Number) from Person Name(String)
-      //char* personId = msg->people[i].name.c_str();
-      //int IdLength = personId.strlen();
-      
-      peopleData[noOfPeople].personId = msg->people[i].name.c_str();
-      peopleData[noOfPeople].t0 = ros::Time::now().toSec();
-      peopleData[noOfPeople].t1 = ros::Time::now().toSec();
-      peopleData[noOfPeople].xdistance = 100 * msg->people[i].pos.x; //Converting m to cm
-      peopleData[noOfPeople].ydistance = 100 * msg->people[i].pos.y; //Converting m to cm
-      peopleData[noOfPeople].posx =  100 * msg->people[i].pos.x; //Converting m to cm
-      peopleData[noOfPeople].posy = 100 * msg->people[i].pos.y; //Converting m to cm
-      peopleData[noOfPeople].distanceFromPR2 = sqrt(pow((peopleData[noOfPeople].xdistance - robotPositionX),2) + pow((peopleData[noOfPeople].ydistance - robotPositionY),2)); //2-D distance
-      peopleData[noOfPeople].distance_travelled = 0.0;
-      peopleData[noOfPeople].speed = 0.0;
-      
-      //Publish the details
-      personDetails.frame_id = "base_link";
-      personDetails.personId = peopleData[noOfPeople].personId; 
-      personDetails.distanceFromPR2 = peopleData[noOfPeople].distanceFromPR2;
-      personDetails.t0 = peopleData[noOfPeople].t0; 
-      personDetails.t1 = peopleData[noOfPeople].t1;
-      personDetails.x = peopleData[noOfPeople].posx;
-      personDetails.y = peopleData[noOfPeople].posy;
-      personDetails.xdistance = peopleData[noOfPeople].xdistance;
-      personDetails.ydistance = peopleData[noOfPeople].ydistance;
-      personDetails.distance_travelled = peopleData[noOfPeople].distance_travelled; 
-      personDetails.speed = peopleData[noOfPeople].speed;
-      people_features.publish(personDetails);
-      
-      //ROS_INFO("New Person to the structure : %s", peopleData[noOfPeople].personId.c_str());
-      //ROS_INFO("\n\tPerson Details ");
-      //ROS_INFO("Person Id : %s added", peopleData[noOfPeople].personId.c_str());
-      //ROS_INFO("Position : %f    %f", peopleData[noOfPeople].xdistance,peopleData[noOfPeople].ydistance);
-      //ROS_INFO("Distance from pr2: %f", peopleData[noOfPeople].distanceFromPR2);
-      //ROS_INFO("Time T0 , T1  : %f , %f", peopleData[noOfPeople].t0, peopleData[noOfPeople].t0);
-       
-      noOfPeople = noOfPeople + 1;
-    }
-    
   }
+
+  //ROS_INFO("Time T0 : %f", peopleData[j].t0);
+  //ROS_INFO("Time T1 : %f", peopleData[j].t1);
+  //ROS_INFO("Speed : %f", peopleData[j].speed);
+  //ROS_INFO("Distance travelled : %f", peopleData[j].distance_travelled);
+          
+  //Publish the details
+  personDetails.frame_id = "base_link";
+  personDetails.personId = personData.personId; 
+  //personDetails.distanceFromPR2 = personData.distanceFromPR2;
+  personDetails.x = personData.posx;
+  personDetails.y = personData.posy;
+  personDetails.t0 = personData.t0; 
+  personDetails.t1 = personData.t1;
+ 	personDetails.xdistance = personData.xdistance;
+	personDetails.ydistance = personData.ydistance;
+  personDetails.distance_travelled = personData.distance_travelled; 
+  personDetails.speed = personData.speed;
   
-}*/
+  ROS_INFO("Person ID : %s", personDetails.personId.c_str());
+  //ROS_INFO("Time T1 : %f", peopleData[j].t1);
+  //ROS_INFO("Speed : %f", peopleData[j].speed);
+  //ROS_INFO("Distance travelled : %f", peopleData[j].distance_travelled);
+   
+
+}
 
 void hallwayDetectionCallback(const hallway::hallwayMsg::ConstPtr& msg){
-  float timeStamp;
-  string time_Stamp;
-  string p1ID, p2ID;
-  int i;
-  float p1HallwayL, p1HallwayR, p2HallwayL, p2HallwayR, p1p2Distance; 
-  string p1_HallwayL, p1_HallwayR, p2_HallwayL, p2_HallwayR, p1p2_Distance; 
   
-  string p1DistanceFromPR2, p2DistanceFromPR2;
+  hallwayFound = 1;
   
-  san_feature_extractor::peopleHallwayFeatures hallwayRelatedFeatures;
-  float m,c, width;
-
-  m = msg->slope_hallwayL; //Slope of Left Hallway
-  c = msg->intercept_hallwayL; //Intercept of Left Hallway
+  san_feature_extractor::newMarkerMsg MarkerPoints;
+  
+  geometry_msgs::Point pointL1;
+  geometry_msgs::Point pointL2; 
+  
   width = msg->width_hallway; //Width of the Hallway
+
+  hallwayPointL1.x = msg->hallwayPointL1.x;
+  hallwayPointL1.y = msg->hallwayPointL1.y;
   
-  hallwayData.m = m;
-  hallwayData.c = c;
-  hallwayData.width = width;
+  hallwayPointL2.x = msg->hallwayPointL2.x;
+  hallwayPointL2.y = msg->hallwayPointL2.y;
   
-  for( int index = 0; index < 1; index++){
-    hallwayRelatedFeatures.frame_id = "base_link";
-    p1ID = peopleData[index].personId.c_str();  
-    p1HallwayR = ( abs( m*peopleData[index].xdistance - peopleData[index].ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
-    p1HallwayL = msg->width_hallway - p1HallwayR;
+  //Calculating slope ang intecept based on transformed points
+  m = (float)(transformedHallwayPoints2.point.y   - transformedHallwayPoints1.point.y)/(float)(transformedHallwayPoints2.point.x - transformedHallwayPoints1.point.x);
+  c = ( transformedHallwayPoints1.point.y  -  m*transformedHallwayPoints1.point.x ) * 100;  
+  
+  //In meters 
+  pointL1.x = transformedHallwayPoints1.point.x ; 
+  pointL1.y = transformedHallwayPoints1.point.y;
     
-    hallwayRelatedFeatures.personId = p1ID;
-    hallwayRelatedFeatures.distancefromHallwayR = p1HallwayR;
-    hallwayRelatedFeatures.distancefromHallwayL = p1HallwayL;
-    hallway_pub.publish(hallwayRelatedFeatures);
-    
-    //Details of first pperson - to test the distanve betwee person1 and hallway
-    /*ROS_INFO("\n\tHallway Features");
-    ROS_INFO("Person id : %s",hallwayRelatedFeatures.personId.c_str());
-    ROS_INFO("Slope: %f",m);
-    ROS_INFO("Intercept: %f",c);
-    ROS_INFO("Width: %f",width);
-    ROS_INFO("P1 Distance from Left Hallway : %f",p1HallwayL);
-    ROS_INFO("P1 Distance from Right Hallway : %f",p1HallwayR);
-    ROS_INFO("P1 position (x, y) : %f , %f", peopleData[index].xdistance, peopleData[index].ydistance);
-    ROS_INFO("P1 distance from pr2 : %f", peopleData[index].distanceFromPR2);
-    outfile << p1ID << ", "<< p1HallwayL << ", " << p1HallwayR << ", " << peopleData[index].distanceFromPR2;*/
-    
-    for(int innerIndex = 0; innerIndex < noOfPeople; innerIndex++){
-      if(innerIndex != index){
-        if(flag==0){
-          startTime = ros::Time::now().toSec();
-          flag = 1;
-        }
-        ROS_INFO("Value of i : %d", i);
-        hallwayRelatedFeatures.frame_id = "base_link";
-        p2ID = peopleData[innerIndex].personId.c_str();  
-        p2HallwayR = ( abs( m*peopleData[innerIndex].xdistance - peopleData[innerIndex].ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
-        p2HallwayL = msg->width_hallway - p2HallwayR;
-        
-        p1p2Distance = sqrt(pow((peopleData[index].xdistance - peopleData[innerIndex].xdistance),2)+pow((peopleData[index].ydistance - peopleData[innerIndex].ydistance),2));
-        currentTime = ros::Time::now().toSec();
-        timeStamp = currentTime - startTime;
-        
-        /*hallwayRelatedFeatures.personId = p2ID;
-        hallwayRelatedFeatures.distancefromHallwayR = p2HallwayR;
-        hallwayRelatedFeatures.distancefromHallwayL = p2HallwayL;
-        hallway_pub.publish(hallwayRelatedFeatures);*/
-        
-        ROS_INFO("\n\tHallway Features");
-        ROS_INFO("Person id : %s",hallwayRelatedFeatures.personId.c_str());
-        ROS_INFO("Slope: %f",m);
-        ROS_INFO("Intercept: %f",c);
-        ROS_INFO("Width: %f",width);
-        ROS_INFO("P1 Distance from Left Hallway : %f",p1HallwayL);
-        ROS_INFO("P1 Distance from Right Hallway : %f",p1HallwayR);
-        ROS_INFO("P2 Distance from Left Hallway : %f",p2HallwayL);
-        ROS_INFO("P2 Distance from Right Hallway : %f",p2HallwayR);
-        ROS_INFO("P1 position (x, y) : %f , %f", peopleData[index].xdistance, peopleData[index].ydistance);
-        ROS_INFO("P2 position (x, y) : %f , %f", peopleData[innerIndex].xdistance, peopleData[innerIndex].ydistance);
-        ROS_INFO("P1 P2 interpersonal distance: %f",p1p2Distance);
-        ROS_INFO("P1 distance from pr2 : %f", peopleData[index].distanceFromPR2);
-        ROS_INFO("P2 distance from pr2 : %f", peopleData[innerIndex].distanceFromPR2);
-        ROS_INFO("Time : %f   %f", currentTime, startTime );
-        
-        time_Stamp = Convert(timeStamp);
-        p1_HallwayL= Convert(p1HallwayL);
-        p1_HallwayR= Convert(p1HallwayR); 
-        p2_HallwayL= Convert(p2HallwayL);
-        p2_HallwayR= Convert(p2HallwayR);
-        p1p2_Distance= Convert(p1p2Distance);
-        p1DistanceFromPR2 = Convert(peopleData[index].distanceFromPR2);
-        p2DistanceFromPR2 = Convert(peopleData[innerIndex].distanceFromPR2);  
-        
-        //To make the file consistent with person
-        /*if(p1HallwayL - p2HallwayL >= 60 && peopleFlag == 0){
-          if(p1HallwayL < p2HallwayL){
-            firstPersonNo = 1;
-          }
-          else{
-            firstPersonNo = 2;
-          }
-          peopleFlag = 1;
-        }
-        else */
-        if (peopleFlag == 0){
-          if(peopleData[index].distanceFromPR2 < peopleData[innerIndex].distanceFromPR2){
-            firstPersonNo = 1;
-            peopleFlag = 1;
-          }
-          else{
-            firstPersonNo = 2;
-            peopleFlag = 1;
-          }
-        } 
-        ROS_INFO("First Person : %d", firstPersonNo );
-        
-        if(firstPersonNo == 1){
-          outfile << timeStamp << ", "<< p1HallwayL << ", " << p1HallwayR << ", " << peopleData[index].distanceFromPR2 << ", "<< p2HallwayL << ", " << p2HallwayR << ", " << peopleData[innerIndex].distanceFromPR2 << ", "<< p1p2Distance  << endl;
-          testfile << timeStamp << " , "<< m  << " ,  "<< c << peopleData[index].personId.c_str() << ", "<< " ,  "<< p1HallwayL << " ,  " << p1HallwayR <<  " ,  " << peopleData[index].xdistance << " ,  " << peopleData[index].ydistance << " , " << peopleData[index].distanceFromPR2 << " , "<< peopleData[innerIndex].personId.c_str() << " , "<< p2HallwayL << " , " << p2HallwayR << " , " << peopleData[innerIndex].xdistance << " , " << peopleData[innerIndex].ydistance << " , " << peopleData[innerIndex].distanceFromPR2 <<" , "<< p1p2Distance  << endl;
-        }
-        else if(firstPersonNo == 2){
-          outfile << timeStamp << ", "<< p2HallwayL << ", " << p2HallwayR << ", " << peopleData[innerIndex].distanceFromPR2 << ", "<< p1HallwayL << ", " << p1HallwayR << ", " << peopleData[index].distanceFromPR2 << ", "<< p1p2Distance  << endl;
-          testfile << timeStamp << " , "<< m  << " ,  "<< c << peopleData[innerIndex].personId.c_str() << ", "<< " ,  "<< p2HallwayL << " ,  " << p2HallwayR <<  " ,  " << peopleData[innerIndex].xdistance << " ,  " << peopleData[innerIndex].ydistance << " , " << peopleData[innerIndex].distanceFromPR2 << " , "<< peopleData[index].personId.c_str() << " , "<< p1HallwayL << " , " << p1HallwayR << " , " << peopleData[index].xdistance << " , " << peopleData[index].ydistance << " , " << peopleData[index].distanceFromPR2 <<" , "<< p1p2Distance  << endl;
-        }
-        
-        
-       //outfile << timeStamp << ", "<< p1HallwayL << ", " << p1HallwayR << ", " << peopleData[index].distanceFromPR2 << ", "<< p2HallwayL << ", " << p2HallwayR << ", " << peopleData[innerIndex].distanceFromPR2 << ", "<< p1p2Distance  << endl;
-        //testfile << timeStamp << " , "<< m  << " ,  "<< c << peopleData[index].personId.c_str() << ", "<< " ,  "<< p1HallwayL << " ,  " << p1HallwayR <<  " ,  " << peopleData[index].xdistance << " ,  " << peopleData[index].ydistance << " , " << peopleData[index].distanceFromPR2 << " , "<< peopleData[innerIndex].personId.c_str() << " , "<< p2HallwayL << " , " << p2HallwayR << " , " << peopleData[innerIndex].xdistance << " , " << peopleData[innerIndex].ydistance << " , " << peopleData[innerIndex].distanceFromPR2 <<" , "<< p1p2Distance  << endl;
-      }
-    }
-    
-  }
+  pointL2.x = transformedHallwayPoints2.point.x; 
+	pointL2.y = transformedHallwayPoints2.point.y;
+  
+  MarkerPoints.pointL1 = pointL1;
+  MarkerPoints.pointL2 = pointL2;
+  new_Marker.publish(MarkerPoints);
+
+  //ROS_INFO("Old Points: %f  , %f , %f  , %f ",msg->hallwayPointL1.x, msg->hallwayPointL1.y, msg->hallwayPointL2.x, msg->hallwayPointL2.y);
+  //ROS_INFO("New Points: %f ,  %f , %f  , %f ",transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y);
+
   
 }
 
 
-/*void odomCombinedCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg){
-  robotPositionY = msg->pose.pose.position.x * 100;
-  robotPositionX = msg->pose.pose.position.y * 100;
-}*/
-
-void trajectoryCallback(const geometry_msgs::Point32::ConstPtr& msg){
-  float trajectoryX, trajectoryY;
-  float personEndPointDistance;
-  float personHallwayL, personHallwayR;
-  float trajectoryPointHallwayL, trajectoryPointHallwayR;
-  float p1EndPointDistance, p2EndPointDistance; 
-    
+void featureCalculator(float robotPositionX, float robotPositionY){
+  
+  float distanceFromPR2, personHallwayR, personHallwayL, robotHallwayR, robotHallwayL, robotHLPersonHL, distanceTravelledbyPR2, distanceToGoal;
   float timeStamp;
-  string p1ID, p2ID;
-  int i;
-  float p1HallwayL, p1HallwayR, p2HallwayL, p2HallwayR, p1p2Distance; 
   
-  trajectoryX = msg->x;
-  trajectoryY = msg->y;
+ 	ostringstream ss;
+  string stringData;
   
-  for( int index = 0; index < 1; index++){
-    p1ID = peopleData[index].personId.c_str();  
-    p1HallwayR = ( abs( hallwayData.m*peopleData[index].xdistance - peopleData[index].ydistance + hallwayData.c ) ) / ( sqrt( pow(hallwayData.m,2) + 1 ) );
-    p1HallwayL = hallwayData.width - p1HallwayR;
-    p1EndPointDistance = sqrt(pow((peopleData[i].posx - trajectoryX),2) + pow((peopleData[i].posy - trajectoryY),2)); //2-D distance
-  
-    for(int innerIndex = 0; innerIndex < noOfPeople; innerIndex++){
-      
-      if(innerIndex != index){
-        
-        if(trajectoryPeopleFlag == 0){
-          trajectoryStartTime = ros::Time::now().toSec();
-          trajectoryPeopleFlag = 1;
-        }
-        ROS_INFO("Value of i : %d", i);
-        p2ID = peopleData[innerIndex].personId.c_str();  
-        p2HallwayR = ( abs( hallwayData.m*peopleData[innerIndex].xdistance - peopleData[innerIndex].ydistance + hallwayData.c ) ) / ( sqrt( pow(hallwayData.m,2) + 1 ) );
-        p2HallwayL = hallwayData.width - p2HallwayR;
-        p1EndPointDistance = sqrt(pow((peopleData[i].posx - trajectoryX),2) + pow((peopleData[i].posy - trajectoryY),2)); //2-D distance
-        
-        p1p2Distance = sqrt(pow((peopleData[index].xdistance - peopleData[innerIndex].xdistance),2)+pow((peopleData[index].ydistance - peopleData[innerIndex].ydistance),2));
-        trajectoryCurrentTime = ros::Time::now().toSec();
-        timeStamp = trajectoryCurrentTime - trajectoryStartTime;
-        
-        //To make the file consistent with person
-        if (trajectoryPeopleFlag == 0){
-          if(peopleData[index].distanceFromPR2 < peopleData[innerIndex].distanceFromPR2){
-            tracetoryFirstPersonNo = 1;
-            peopleFlag = 1;
-          }
-          else{
-            tracetoryFirstPersonNo = 2;
-            peopleFlag = 1;
-          }
-        }
-        
-        ROS_INFO("First Person : %d", firstPersonNo );
-        
-        if(firstPersonNo == 1){
-          trajectoryOutfile << timeStamp << ", "<< p1HallwayL << ", " << p1HallwayR << ", " << p1EndPointDistance << ", "<< p2HallwayL << ", " << p2HallwayR << ", " << p2EndPointDistance << ", "<< p1p2Distance  << endl;
-          trajectoryTestfile << timeStamp << " , "<< hallwayData.m  << " ,  "<< hallwayData.c << peopleData[index].personId.c_str() << ", "<< " ,  "<< p1HallwayL << " ,  " << p1HallwayR <<  " ,  " << peopleData[index].xdistance << " ,  " << peopleData[index].ydistance << " , " << p1EndPointDistance << " , "<< peopleData[innerIndex].personId.c_str() << " , "<< p2HallwayL << " , " << p2HallwayR << " , " << peopleData[innerIndex].xdistance << " , " << peopleData[innerIndex].ydistance << " , " << p2EndPointDistance <<" , "<< p1p2Distance  << endl;
-        }
-        else if(firstPersonNo == 2){
-          trajectoryOutfile << timeStamp << ", "<< p2HallwayL << ", " << p2HallwayR << ", " << p1EndPointDistance << ", "<< p1HallwayL << ", " << p1HallwayR << ", " << p1EndPointDistance << ", "<< p1p2Distance  << endl;
-          trajectoryTestfile << timeStamp << " , "<< hallwayData.m  << " ,  "<< hallwayData.c << peopleData[innerIndex].personId.c_str() << ", "<< " ,  "<< p2HallwayL << " ,  " << p2HallwayR <<  " ,  " << peopleData[innerIndex].xdistance << " ,  " << peopleData[innerIndex].ydistance << " , " << p1EndPointDistance << " , "<< peopleData[index].personId.c_str() << " , "<< p1HallwayL << " , " << p1HallwayR << " , " << peopleData[index].xdistance << " , " << peopleData[index].ydistance << " , " << p1EndPointDistance <<" , "<< p1p2Distance  << endl;
-        }
-        
-      }
-    }
+  if(flag == 0){
+    flag =1;
+    startTime = ros::Time::now().toSec();
   }
   
-  /*for(int i = 0; i < noOfPeople; i++){
-    personEndPointDistance = sqrt(pow((peopleData[i].posx - trajectoryX),2) + pow((peopleData[i].posy - trajectoryY),2)); //2-D distance
-    personHallwayR = ( abs(  hallwayData.m*peopleData[i].xdistance - peopleData[i].ydistance +  hallwayData.c ) ) / ( sqrt( pow( hallwayData.m,2) + 1 ) ); //in cm
-    personHallwayL = hallwayData.width -  personHallwayR;
-    trajectoryPointHallwayR = ( abs(  hallwayData.m*trajectoryX - trajectoryY +  hallwayData.c ) ) / ( sqrt( pow( hallwayData.m,2) + 1 ) ); //in cm
-    trajectoryPointHallwayL =  hallwayData.width - trajectoryPointHallwayR;
-  }*/
-  
-  
+  if( personFound == 0 ){
+   	ROS_INFO("\n\tNo person in the hallway");   
+  }
+  else if( hallwayFound = 0 ){
+   	ROS_INFO("\n\tNo hallway data found");
+	}
+ 	else{
+    currentTime = ros::Time::now().toSec();
+    timeStamp = currentTime - startTime;
+    
+		distanceFromPR2 =  sqrt(pow((personData.xdistance - robotPositionX),2) + pow((personData.ydistance - robotPositionY),2)); //2-D distance 
+	  distanceTravelledbyPR2 = sqrt(pow((robotPositionX - intialPoseX ), 2) + pow( (robotPositionY - intialPoseY ) ,2));
+	  distanceToGoal = sqrt(pow((goalPoseX - robotPositionX ), 2) + pow( (goalPoseY - robotPositionY) ,2)); 
+    personHallwayR = ( fabs( m*personData.xdistance - personData.ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
+    personHallwayL = width - personHallwayR;
+	  robotHallwayR = ( fabs( m*robotPositionX - robotPositionY + c ) ) / ( sqrt( pow(m,2) + 1 ) );
+	  robotHallwayL = width - robotHallwayR;
+	  robotHLPersonHL = robotHallwayL - personHallwayL;
+	    
+    ROS_INFO("SAN FEATURES");
+    ROS_INFO("Person to Robot distance : %f", distanceFromPR2);
+    ROS_INFO("Distance travelled by Robot : %f", distanceTravelledbyPR2);
+    ROS_INFO("Person to hallway right : %f", personHallwayR);
+    ROS_INFO("Person to hallway left : %f", personHallwayL);
+    ROS_INFO("Robot to hallway right : %f", robotHallwayR);
+    ROS_INFO("Robot to hallway left : %f", robotHallwayL);
+    ROS_INFO("Hallway width : %f", width);
+
+	  ss << currentTime;
+	  stringData = ss.str();
+	  SANfeatures.push_back(stringData);
+	    
+	  ss << distanceTravelledbyPR2;  
+	  stringData = ss.str();
+	  SANfeatures.push_back(stringData);
+	    
+    ss << personHallwayL; 
+	  stringData = ss.str();
+	  SANfeatures.push_back(stringData);
+	    
+	  ss << distanceFromPR2; 
+	  stringData = ss.str();
+	  SANfeatures.push_back(stringData);
+	    
+	  ss << robotHLPersonHL; 
+	  stringData = ss.str();
+	  SANfeatures.push_back(stringData);
+	}  
 }
 
+bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, san_feature_extractor::Trajectory::Response &res)
+{
+  
+  float classifyProbability[4];
+  int  classification;
+  
+  //Call featureCalculator function to get the SAn features as a vector of strings
+  /*robotFuturePosition.x = req.x;
+  robotFuturePosition.y = req.y;
+  robotFuturePosition.z = 0;
+
+  featureCalculator(transformedRobotPose.point.x * 100, transformedRobotPose.point.y * 100);*/
+
+  featureCalculator(req.x*100, req.y*100);
+
+  ROS_INFO("future trajectory points: (%f , %f )", req.x , req.y);
+  
+  san_nodes::Classify classifyScenario;
+  classifyScenario.request.sample = SANfeatures;
+  
+  if (clientClassify.call(classifyScenario))
+  {
+   	classification = classifyScenario.response.classify_label;
+  }
+  else
+  {
+    ROS_ERROR("Failed to call service classifyScenario");
+  }	
+    
+  classification = 0;
+
+  san_nodes::Appscore scoreScenario;
+  scoreScenario.request.sample = SANfeatures;
+  
+  if (clientAppscore.call(scoreScenario))
+  {
+    //Get the probability of the corresponding Scenario
+    classifyProbability[classification] = scoreScenario.response.classify_probs[classification];
+    ROS_INFO("Classification probability for scenario - %f", classifyProbability[classification]);
+  }
+  else
+  {
+    ROS_ERROR("Failed to call service Appscore");
+  }
+  
+  //Clear vector<string> features ;
+  SANfeatures.clear();
+  
+  res.prob = classifyProbability[classification];
+  ROS_INFO("request: x=%ld, y=%ld", (long int)req.x, (long int)req.y);
+  ROS_INFO("sending back response: [%ld]", (long int)res.prob);
+  return true;
+}
 
 
 int main( int argc, char* argv[] ){
   
-  // Initialize the ROS system and specify the node name.
+  //Initialize the ROS system and specify the node name.
   ros::init(argc,argv,"legdata") ;
-  
-  // Establish this program as a ROS node.
+
   ros::NodeHandle nh ; 
+  	
+  tf::TransformListener listener;
   
+  //Subsribe to 2D Pose Estimate 
+  ros::Subscriber initialpose_sub = nh.subscribe("initialpose", 1000, initialPoseCallback);
+
   //ros::Subscriber robot_Pose_sub = nh.subscribe("/robot_pose_ekf/odom_combined", 1000, robotPositionCallback);
   ros::Subscriber people_sub = nh.subscribe("people_tracker_measurements", 1000, peoplePositionCallback);
+  //Subsribe to hallway
   ros::Subscriber hallway_sub = nh.subscribe("hallway_data", 1000, hallwayDetectionCallback);
-  ros::Subscriber trajectory_sub = nh.subscribe("trajectory_points", 1000, trajectoryCallback);
-  //ros::Subscriber odom_sub = nh.subscribe("robot_pose_ekf/odom_combined", 1000, odomCombinedCallback);
+
+  //For Simulator - Subsribe to person postion
+	ros::Subscriber person_sub = nh.subscribe("/robot_1/base_pose_ground_truth", 1000, personPositionCallback);
+  //For Simulator - Subsribe to robot postion
+	ros::Subscriber robotpose_sub = nh.subscribe("/robot_0/base_pose_ground_truth", 1000, robotPositionCallback);
   
-  people_features = nh.advertise<san_feature_extractor::peopleData>("peopleFeatures",1000);
-  hallway_pub = nh.advertise<san_feature_extractor::peopleHallwayFeatures>("peopleHallwayFeatures",1000);
+  //Publishers for publishing People Data and SAN Features
+  //people_features = nh.advertise<san_feature_extractor::peopleData>("peopleFeatures",1000);
+  //san_features = nh.advertise<san_feature_extractor::sanData>("sanFeatures",1000);
+  	
+  new_Marker = nh.advertise<san_feature_extractor::newMarkerMsg>("new_hallway_marker_points", 100);
+  start_cmd = nh.advertise<std_msgs::String>("navigation_command", 1000);
+  //Publish the goal position
+   move_to_goal = nh.advertise< geometry_msgs::PoseStamped>("move_base_simple/goal",1000);
   
+  //Service for feature calculation
+  ros::ServiceServer service = nh.advertiseService("future_trajectory_points", featureExtractionService);
+  clientClassify = nh.serviceClient<san_nodes::Classify>("classify_samples");
+ 	clientAppscore = nh.serviceClient<san_nodes::Appscore>("give_appscore");
+  
+  ROS_INFO("Server ready");
+  
+  ros::Rate rate(10.0);
+  
+  tf::StampedTransform transform;
+
+
+  ros::Timer timer = nh.createTimer(ros::Duration(1.0), boost::bind(&transformPoint, boost::ref(listener)));
+
+  //Not required : Robot and human positions are now with respect to world 
+
+  //Transforms for /robot_0/odom to /map
+  /*try{
+    ROS_INFO("Try");
+    listener.waitForTransform("/robot_0/odom", "map",  ros::Time(0), ros::Duration(10.0));
+    ROS_INFO("Wait");
+    listener.lookupTransform("/robot_0/odom", "map",  ros::Time(0), transform);
+    ROS_INFO("Look");
+  }
+  catch (tf::TransformException &ex){
+    ROS_INFO("Catch");
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
+  odom_0_OriginX = transform.getOrigin().x();
+  odom_0_OriginY = transform.getOrigin().y();  
+  ROS_INFO("X - %f, Y - %f", odom_0_OriginX, odom_0_OriginY);*/
+
+  //Transforms for /robot_1/odom to /map
+  /*try{
+    ROS_INFO("Try");
+    listener.waitForTransform("/robot_1/odom", "map",  ros::Time(0), ros::Duration(10.0));
+    ROS_INFO("Wait");
+    listener.lookupTransform("/robot_1/odom", "map",  ros::Time(0), transform);
+    ROS_INFO("Look");
+  }
+  catch (tf::TransformException &ex){
+    ROS_INFO("Catch");
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
+  odom_1_OriginX = transform.getOrigin().x();
+  odom_1_OriginY = transform.getOrigin().y();  
+  ROS_INFO("X - %f, Y - %f", odom_1_OriginX, odom_1_OriginY);*/
+    
+  rate.sleep();
+ 
+  ROS_INFO("Out");
   ros::spin();
   
   return 0;
