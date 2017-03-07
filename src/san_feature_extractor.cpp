@@ -78,6 +78,7 @@ geometry_msgs::PointStamped transformedHallwayPoints1;
 geometry_msgs::PointStamped hallwayPoints2;
 geometry_msgs::PointStamped transformedHallwayPoints2;
 
+
 /*geometry_msgs::PointStamped personPose;
 geometry_msgs::PointStamped transformedPersonPose;
 
@@ -89,6 +90,7 @@ geometry_msgs::PointStamped transformedRobotGoalPose;
 
 geometry_msgs::PointStamped robotPose;
 geometry_msgs::PointStamped transformedRobotPose;*/
+
 
 double currentTime, startTime;
 
@@ -192,7 +194,6 @@ void transformPoint(const tf::TransformListener& listener){
     ROS_INFO("Test Robot Position: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
         testrobotPose.point.x, testrobotPose.point.y, testrobotPose.point.z,
         testtransformedRobotPose.point.x, testtransformedRobotPose.point.y, testtransformedRobotPose.point.z, testtransformedRobotPose.header.stamp.toSec());*/
-
   }
   catch(tf::TransformException& ex){
     ROS_ERROR("Received an exception trying to transform a point from \"robot_0\"base_laser_link\" to \"map\": %s", ex.what());
@@ -208,6 +209,7 @@ void robotPositionCallback ( const nav_msgs::Odometry::ConstPtr& msg  ){
   //test.x = poseX;
   //test.y = poseY;
   //test.z = 0;
+  
 }
 
 
@@ -229,7 +231,6 @@ void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstP
   goalPosition.pose.orientation.y = 0;
   goalPosition.pose.orientation.z = -0.006;
   goalPosition.pose.orientation.w = 0.999;
-
 
   goalPoseX = goalPosition.pose.position.x * 100;//In cm
   goalPoseY = goalPosition.pose.position.y * 100;//In cm
@@ -597,6 +598,7 @@ int main( int argc, char* argv[] ){
   odom_1_OriginX = transform.getOrigin().x();
   odom_1_OriginY = transform.getOrigin().y();  
   ROS_INFO("X - %f, Y - %f", odom_1_OriginX, odom_1_OriginY);*/
+
     
   rate.sleep();
  

@@ -4,8 +4,6 @@
 #include <nav_msgs/OccupancyGrid.h>
 
 
-
-
 void poseCallback(const nav_msgs::Odometry::ConstPtr& msg){
   static tf::TransformBroadcaster br;
   tf::Transform transform;
@@ -15,6 +13,7 @@ void poseCallback(const nav_msgs::Odometry::ConstPtr& msg){
   transform.setRotation(q);
   br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "robot_1/odom"));
 }
+
 
 
 /*void testposeCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg){
@@ -30,6 +29,7 @@ void poseCallback(const nav_msgs::Odometry::ConstPtr& msg){
   //br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "world", "robot_0/odom"));
 }*/
 
+
 int main(int argc, char** argv){
   ros::init(argc, argv, "san_missing_tf_broadcaster");
 
@@ -37,7 +37,6 @@ int main(int argc, char** argv){
   ros::Subscriber sub = node.subscribe("robot_1/odom", 10, &poseCallback);
 
   //ros::Subscriber testsub = node.subscribe("map", 10, &testposeCallback);
-
 
   ros::spin();
   return 0;
