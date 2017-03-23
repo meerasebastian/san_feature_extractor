@@ -163,15 +163,15 @@ void transformPoint(const tf::TransformListener& listener){
 
     //Need to transform hallway points from /robot_0/base_laser_link to /world
 
-    listener.transformPoint("/robot_0/odom", hallwayPoints1, transformedHallwayPoints1);
-    ROS_INFO("Hallway Point 1: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+    listener.transformPoint("/map", hallwayPoints1, transformedHallwayPoints1);
+    /*ROS_INFO("Hallway Point 1: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
         hallwayPoints1.point.x, hallwayPoints1.point.y, hallwayPoints1.point.z,
-        transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints1.point.z, transformedHallwayPoints1.header.stamp.toSec());
+        transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints1.point.z, transformedHallwayPoints1.header.stamp.toSec());*/
 
-    //listener.transformPoint("/robot_0/odom", hallwayPoints2, transformedHallwayPoints2); 
-    //ROS_INFO("Hallway Point 2: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
-        //hallwayPoints2.point.x, hallwayPoints2.point.y, hallwayPoints2.point.z,
-        //transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y, transformedHallwayPoints2.point.z, transformedHallwayPoints2.header.stamp.toSec());
+    listener.transformPoint("/map", hallwayPoints2, transformedHallwayPoints2); 
+    /*ROS_INFO("Hallway Point 2: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        hallwayPoints2.point.x, hallwayPoints2.point.y, hallwayPoints2.point.z,
+        transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y, transformedHallwayPoints2.point.z, transformedHallwayPoints2.header.stamp.toSec());*/
 
     //Not required: Person and robot positions are now rbased on world frame
 
@@ -200,23 +200,106 @@ void transformPoint(const tf::TransformListener& listener){
   }
 }
 
+void featureCalculator(float robotPositionX, float robotPositionY){
+  
+  float distanceFromPR2, personHallwayR, personHallwayL, robotHallwayR, robotHallwayL, robotHLPersonHL, distanceTravelledbyPR2, distanceToGoal;
+  float timeStamp;
+  
+  ostringstream ss;
+  string stringData;
+  
+  if(flag == 0){
+    flag =1;
+    startTime = ros::Time::now().toSec();
+  }
+  
+  if( personFound == 0 ){
+    ROS_INFO("\n\tNo person in the hallway");   
+  }
+  else if( hallwayFound = 0 ){
+    ROS_INFO("\n\tNo hallway data found");
+  }
+  else{
+    currentTime = ros::Time::now().toSec();
+    timeStamp = currentTime - startTime;
+    
+  distanceFromPR2 =  sqrt(pow((personData.xdistance - robotPositionX),2) + pow((personData.ydistance - robotPositionY),2)); //2-D distance 
+  distanceTravelledbyPR2 = sqrt(pow((robotPositionX - intialPoseX ), 2) + pow( (robotPositionY - intialPoseY ) ,2));
+  distanceToGoal = sqrt(pow((goalPoseX - robotPositionX ), 2) + pow( (goalPoseY - robotPositionY) ,2)); 
+  personHallwayR = ( fabs( m*personData.xdistance - personData.ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
+  personHallwayL = width - personHallwayR;
+  robotHallwayR = ( fabs( m*robotPositionX - robotPositionY + c ) ) / ( sqrt( pow(m,2) + 1 ) );
+  robotHallwayL = width - robotHallwayR;
+  robotHLPersonHL = robotHallwayL - personHallwayL;
+      
+    /*ROS_INFO("SAN FEATURES");
+    ROS_INFO("Person to Robot distance : %f", distanceFromPR2);
+    ROS_INFO("Distance travelled by Robot : %f", distanceTravelledbyPR2);
+    ROS_INFO("Person to hallway right : %f", personHallwayR);
+    ROS_INFO("Person to hallway left : %f", personHallwayL);
+    ROS_INFO("Robot to hallway right : %f", robotHallwayR);
+    ROS_INFO("Robot to hallway left : %f", robotHallwayL);
+    ROS_INFO("Hallway width : %f", width);*/
+
+    ss << currentTime;
+    stringData = ss.str();
+    ss.str(std::string());
+    SANfeatures.push_back(stringData);
+    ROS_INFO("Time - %f - %s",currentTime,stringData.c_str());
+      
+    ss << distanceTravelledbyPR2;  
+    stringData = ss.str();
+    ss.str(std::string());
+    SANfeatures.push_back(stringData);
+    ROS_INFO("distanceTravelledbyPR2 - %f - %s", distanceTravelledbyPR2, stringData.c_str());
+      
+    ss << personHallwayL; 
+    stringData = ss.str();
+    ss.str(std::string());
+    SANfeatures.push_back(stringData);
+    ROS_INFO("personHallwayL- %f - %s", personHallwayL, stringData.c_str());
+      
+    ss << distanceFromPR2; 
+    stringData = ss.str();
+    ss.str(std::string());
+    SANfeatures.push_back(stringData);
+    ROS_INFO("distanceFromPR2 - %f - %s", distanceFromPR2, stringData.c_str());
+      
+    ss << robotHLPersonHL; 
+    stringData = ss.str();
+    ss.str(std::string());
+    SANfeatures.push_back(stringData);
+    ROS_INFO("robotHLPersonHL - %f - %s", robotHLPersonHL, stringData.c_str());
+  }  
+}
+
+
 //Function to get the current position of the robot
 void robotPositionCallback ( const nav_msgs::Odometry::ConstPtr& msg  ){
  
   poseX = msg->pose.pose.position.x;//In m to cm
   poseY = msg->pose.pose.position.y; //In m
 
+  //float angle = msg->
+
   //test.x = poseX;
   //test.y = poseY;
   //test.z = 0;
+
+  //New x = x cos a - y sin a
+  //New y = x sin a - y cos a
   
 }
 
 
 void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg){
   std_msgs::String navMsg;  
-  ROS_INFO("In pose estimate callback");
+  //ROS_INFO("In pose estimate callback");
   geometry_msgs::PoseStamped goalPosition; 
+
+  /*FOR TESTING - SAN_NODES
+  int  classification;
+  float classifyProbability[4];*/
 
   robotGoalPosition.x = 59.054;
   robotGoalPosition.y = 10.257;
@@ -253,6 +336,46 @@ void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstP
   //Start command to start the human simulation
   navMsg.data = "Start";
   start_cmd.publish(navMsg);
+
+  /*FOR TESTING SERVICE - SAN_NODES
+  featureCalculator((intialPoseX+0.02)*100, intialPoseY*100);
+
+  for(int i = 0;i < SANfeatures.size();i++){
+    ROS_INFO("Data: %s",SANfeatures[i].c_str());
+  }
+
+  ROS_INFO("future trajectory points: (%f , %f )", (intialPoseX+0.02) , intialPoseY*100 );
+  
+  san_nodes::Classify classifyScenario;
+  classifyScenario.request.sample = SANfeatures;
+  
+  if (clientClassify.call(classifyScenario))
+  {
+    classification = classifyScenario.response.classify_label;
+    ROS_INFO("Service for recognizing scenario: %d", classification);
+  }
+  else
+  {
+    ROS_ERROR("Failed to call service classifyScenario");
+  } 
+  classification = 0;
+
+  san_nodes::Appscore scoreScenario;
+  scoreScenario.request.sample = SANfeatures;
+  
+  if (clientAppscore.call(scoreScenario))
+  {
+    //Get the probability of the corresponding Scenario
+    classifyProbability[classification] = scoreScenario.response.classify_probs[classification];
+    ROS_INFO("Classification probability for scenario - %f", classifyProbability[classification]);
+  }
+  else
+  {
+    ROS_ERROR("Failed to call service Appscore");
+  }
+  
+  //Clear vector<string> features ;
+  SANfeatures.clear();*/
 }
 
 //For Simulation - Person Detection
@@ -387,11 +510,27 @@ void hallwayDetectionCallback(const hallway::hallwayMsg::ConstPtr& msg){
   pointL1.y = transformedHallwayPoints1.point.y;
     
   pointL2.x = transformedHallwayPoints2.point.x; 
-	pointL2.y = transformedHallwayPoints2.point.y;
-  
+  pointL2.y = transformedHallwayPoints2.point.y;
+
   MarkerPoints.pointL1 = pointL1;
   MarkerPoints.pointL2 = pointL2;
   new_Marker.publish(MarkerPoints);
+
+
+  //Calculating slope ang intecept based on transformed points
+  /*m = (float)(hallwayPoints2.point.y   - hallwayPoints1.point.y)/(float)(hallwayPoints2.point.x - hallwayPoints1.point.x);
+  c = ( hallwayPoints1.point.y  -  m*hallwayPoints1.point.x ) * 100;  
+  
+  //In meters 
+  pointL1.x = hallwayPoints1.point.x ; 
+  pointL1.y = hallwayPoints1.point.y;
+    
+  pointL2.x = hallwayPoints2.point.x; 
+  pointL2.y = hallwayPoints2.point.y;
+  
+  MarkerPoints.pointL1 = pointL1;
+  MarkerPoints.pointL2 = pointL2;
+  new_Marker.publish(MarkerPoints);*/
 
   //ROS_INFO("Old Points: %f  , %f , %f  , %f ",msg->hallwayPointL1.x, msg->hallwayPointL1.y, msg->hallwayPointL2.x, msg->hallwayPointL2.y);
   //ROS_INFO("New Points: %f ,  %f , %f  , %f ",transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y);
@@ -400,74 +539,13 @@ void hallwayDetectionCallback(const hallway::hallwayMsg::ConstPtr& msg){
 }
 
 
-void featureCalculator(float robotPositionX, float robotPositionY){
-  
-  float distanceFromPR2, personHallwayR, personHallwayL, robotHallwayR, robotHallwayL, robotHLPersonHL, distanceTravelledbyPR2, distanceToGoal;
-  float timeStamp;
-  
- 	ostringstream ss;
-  string stringData;
-  
-  if(flag == 0){
-    flag =1;
-    startTime = ros::Time::now().toSec();
-  }
-  
-  if( personFound == 0 ){
-   	ROS_INFO("\n\tNo person in the hallway");   
-  }
-  else if( hallwayFound = 0 ){
-   	ROS_INFO("\n\tNo hallway data found");
-	}
- 	else{
-    currentTime = ros::Time::now().toSec();
-    timeStamp = currentTime - startTime;
-    
-		distanceFromPR2 =  sqrt(pow((personData.xdistance - robotPositionX),2) + pow((personData.ydistance - robotPositionY),2)); //2-D distance 
-	  distanceTravelledbyPR2 = sqrt(pow((robotPositionX - intialPoseX ), 2) + pow( (robotPositionY - intialPoseY ) ,2));
-	  distanceToGoal = sqrt(pow((goalPoseX - robotPositionX ), 2) + pow( (goalPoseY - robotPositionY) ,2)); 
-    personHallwayR = ( fabs( m*personData.xdistance - personData.ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
-    personHallwayL = width - personHallwayR;
-	  robotHallwayR = ( fabs( m*robotPositionX - robotPositionY + c ) ) / ( sqrt( pow(m,2) + 1 ) );
-	  robotHallwayL = width - robotHallwayR;
-	  robotHLPersonHL = robotHallwayL - personHallwayL;
-	    
-    ROS_INFO("SAN FEATURES");
-    ROS_INFO("Person to Robot distance : %f", distanceFromPR2);
-    ROS_INFO("Distance travelled by Robot : %f", distanceTravelledbyPR2);
-    ROS_INFO("Person to hallway right : %f", personHallwayR);
-    ROS_INFO("Person to hallway left : %f", personHallwayL);
-    ROS_INFO("Robot to hallway right : %f", robotHallwayR);
-    ROS_INFO("Robot to hallway left : %f", robotHallwayL);
-    ROS_INFO("Hallway width : %f", width);
-
-	  ss << currentTime;
-	  stringData = ss.str();
-	  SANfeatures.push_back(stringData);
-	    
-	  ss << distanceTravelledbyPR2;  
-	  stringData = ss.str();
-	  SANfeatures.push_back(stringData);
-	    
-    ss << personHallwayL; 
-	  stringData = ss.str();
-	  SANfeatures.push_back(stringData);
-	    
-	  ss << distanceFromPR2; 
-	  stringData = ss.str();
-	  SANfeatures.push_back(stringData);
-	    
-	  ss << robotHLPersonHL; 
-	  stringData = ss.str();
-	  SANfeatures.push_back(stringData);
-	}  
-}
-
 bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, san_feature_extractor::Trajectory::Response &res)
 {
   
   float classifyProbability[4];
   int  classification;
+
+  ROS_INFO("In Service");
   
   //Call featureCalculator function to get the SAn features as a vector of strings
   /*robotFuturePosition.x = req.x;
@@ -486,6 +564,7 @@ bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, 
   if (clientClassify.call(classifyScenario))
   {
    	classification = classifyScenario.response.classify_label;
+    ROS_INFO("Service for recognizing scenario: %d", classification);
   }
   else
   {
@@ -581,23 +660,6 @@ int main( int argc, char* argv[] ){
   odom_0_OriginX = transform.getOrigin().x();
   odom_0_OriginY = transform.getOrigin().y();  
   ROS_INFO("X - %f, Y - %f", odom_0_OriginX, odom_0_OriginY);*/
-
-  //Transforms for /robot_1/odom to /map
-  /*try{
-    ROS_INFO("Try");
-    listener.waitForTransform("/robot_1/odom", "map",  ros::Time(0), ros::Duration(10.0));
-    ROS_INFO("Wait");
-    listener.lookupTransform("/robot_1/odom", "map",  ros::Time(0), transform);
-    ROS_INFO("Look");
-  }
-  catch (tf::TransformException &ex){
-    ROS_INFO("Catch");
-    ROS_ERROR("%s",ex.what());
-    ros::Duration(1.0).sleep();
-  }
-  odom_1_OriginX = transform.getOrigin().x();
-  odom_1_OriginY = transform.getOrigin().y();  
-  ROS_INFO("X - %f, Y - %f", odom_1_OriginX, odom_1_OriginY);*/
 
     
   rate.sleep();

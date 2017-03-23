@@ -11,7 +11,7 @@ void poseCallback(const nav_msgs::Odometry::ConstPtr& msg){
   tf::Quaternion q;
   q.setRPY(0, 0, msg->twist.twist.angular.z);
   transform.setRotation(q);
-  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "robot_1/odom"));
+  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "robot_0/odom"));
 }
 
 
@@ -34,7 +34,7 @@ int main(int argc, char** argv){
   ros::init(argc, argv, "san_missing_tf_broadcaster");
 
   ros::NodeHandle node;
-  ros::Subscriber sub = node.subscribe("robot_1/odom", 10, &poseCallback);
+  ros::Subscriber sub = node.subscribe("robot_0/odom", 10, &poseCallback);
 
   //ros::Subscriber testsub = node.subscribe("map", 10, &testposeCallback);
 

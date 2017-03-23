@@ -34,7 +34,7 @@ void newHallwayVisualizationCallback(const san_feature_extractor::newMarkerMsg::
 
 int main( int argc, char** argv )
 {
-  ros::init(argc, argv, "points_and_lines");
+  ros::init(argc, argv, "new_points_and_lines");
   ros::NodeHandle n;
   ros::Subscriber sub = n.subscribe("new_hallway_marker_points", 1000, newHallwayVisualizationCallback);
   marker_pub = n.advertise<visualization_msgs::Marker>("new_visual_marker", 100);
@@ -42,11 +42,11 @@ int main( int argc, char** argv )
   //ros::Rate r(30);
 
   //float f = 0.0;
-  // while (ros::ok())
+  // while (ros::ok())s
   // {
-    points.header.frame_id = line_stripL.header.frame_id = "/odom_combined";
+    points.header.frame_id = line_stripL.header.frame_id = "/map";
     points.header.stamp = line_stripL.header.stamp = ros::Time::now();
-    points.ns = line_stripL.ns = "points_and_lines";
+    points.ns = line_stripL.ns = "new_points_and_lines";
     points.action = line_stripL.action = visualization_msgs::Marker::ADD;
     points.pose.orientation.w = line_stripL.pose.orientation.w = 1.0;
 
@@ -70,11 +70,11 @@ int main( int argc, char** argv )
     
 
     // Points are green
-    points.color.g = 1.0f;
+    points.color.b = 1.0f;
     points.color.a = 1.0;
 
     // Line strip is blue
-    line_stripL.color.b = 1.0;
+    line_stripL.color.g = 1.0;
     line_stripL.color.a = 1.0;
 
     
