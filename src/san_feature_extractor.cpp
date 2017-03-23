@@ -571,7 +571,7 @@ bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, 
     ROS_ERROR("Failed to call service classifyScenario");
   }	
     
-  classification = 0;
+  //classification = 0;
 
   san_nodes::Appscore scoreScenario;
   scoreScenario.request.sample = SANfeatures;
