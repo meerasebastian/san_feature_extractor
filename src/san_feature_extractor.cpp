@@ -54,20 +54,18 @@ ros::ServiceClient clientAppscore;
 
 vector<string> SANfeatures;
 
-int flag = 0, robotFound = 0;
+int flag = 0, robotFound = 0, testflag = 0;
 float personInitialX = 0, personInitialY = 0, currentRobotPositionX = 0; 
 float odom_0_OriginX = 0, odom_0_OriginY = 0, odom_1_OriginX = 0, odom_1_OriginY = 0;
 float m = 0 ,c = 0, width = 0;
 float poseX = 0, poseY = 0, intialPoseX = 0 , intialPoseY = 0, goalPoseX = 0 , goalPoseY = 0; 
 
+ofstream outfile ("SimDataset.txt");
+ofstream appScorefile ("SimAppScore.txt");
+
 //geometry_msgs::Point robotPosition;
 geometry_msgs::Point robotGoalPosition;
-/*geometry_msgs::Point robotFuturePosition;
-
-geometry_msgs::Point test;
-
-geometry_msgs::PointStamped testrobotPose;
-geometry_msgs::PointStamped testtransformedRobotPose;*/
+geometry_msgs::Point robotFuturePosition;
 
 geometry_msgs::Point hallwayPointL1;
 geometry_msgs::Point hallwayPointL2; 
@@ -91,14 +89,11 @@ geometry_msgs::PointStamped transformedRobotGoalPose;
 geometry_msgs::PointStamped robotPose;
 geometry_msgs::PointStamped transformedRobotPose;*/
 
+geometry_msgs::PointStamped robotPose;
+geometry_msgs::PointStamped transformedRobotPose;
+
 
 double currentTime, startTime;
-
-ofstream outfile ("Dataset1.txt");
-ofstream testfile ("Testdataset1.txt");
-
-ofstream trajectoryOutfile ("TrajectoryDataset1.txt");
-ofstream trajectoryTestfile ("TrajectoryTestdataset1.txt");
 
 ros::Publisher people_features, san_features, start_cmd;
 ros::Publisher new_Marker, move_to_goal;
@@ -127,6 +122,12 @@ void transformPoint(const tf::TransformListener& listener){
   hallwayPoints2.point.x = hallwayPointL2.x;
   hallwayPoints2.point.y = hallwayPointL2.y;
   hallwayPoints2.point.z = 0.0;
+
+  robotPose.header.frame_id = "/robot_0/odom";
+  robotPose.header.stamp = ros::Time();
+  robotPose.point.x = robotFuturePosition.x;
+  robotPose.point.y = robotFuturePosition.y;
+  robotPose.point.z = 0.0;
 
   /*personPose.header.frame_id = "/robot_1/odom";
   personPose.header.stamp = ros::Time();
@@ -173,6 +174,12 @@ void transformPoint(const tf::TransformListener& listener){
         hallwayPoints2.point.x, hallwayPoints2.point.y, hallwayPoints2.point.z,
         transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y, transformedHallwayPoints2.point.z, transformedHallwayPoints2.header.stamp.toSec());*/
 
+
+    listener.transformPoint("/map", robotPose, transformedRobotPose); 
+    /*ROS_INFO("Future Robot Position: (%.2f, %.2f. %.2f) -----> map: (%.2f, %.2f, %.2f) at time %.2f",
+        robotPose.point.x, robotPose.point.y, robotPose.point.z,
+        transformedRobotPose.point.x, transformedRobotPose.point.y, transformedRobotPose.point.z, transformedRobotPose.header.stamp.toSec());*/
+
     //Not required: Person and robot positions are now rbased on world frame
 
     /*Listener.transformPoint("/map", personPose, transformedPersonPose); 
@@ -204,6 +211,7 @@ void featureCalculator(float robotPositionX, float robotPositionY){
   
   float distanceFromPR2, personHallwayR, personHallwayL, robotHallwayR, robotHallwayL, robotHLPersonHL, distanceTravelledbyPR2, distanceToGoal;
   float timeStamp;
+  float normalized_time, total_distance;
   
   ostringstream ss;
   string stringData;
@@ -223,25 +231,29 @@ void featureCalculator(float robotPositionX, float robotPositionY){
     currentTime = ros::Time::now().toSec();
     timeStamp = currentTime - startTime;
     
-  distanceFromPR2 =  sqrt(pow((personData.xdistance - robotPositionX),2) + pow((personData.ydistance - robotPositionY),2)); //2-D distance 
-  distanceTravelledbyPR2 = sqrt(pow((robotPositionX - intialPoseX ), 2) + pow( (robotPositionY - intialPoseY ) ,2));
-  distanceToGoal = sqrt(pow((goalPoseX - robotPositionX ), 2) + pow( (goalPoseY - robotPositionY) ,2)); 
-  personHallwayR = ( fabs( m*personData.xdistance - personData.ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
-  personHallwayL = width - personHallwayR;
-  robotHallwayR = ( fabs( m*robotPositionX - robotPositionY + c ) ) / ( sqrt( pow(m,2) + 1 ) );
-  robotHallwayL = width - robotHallwayR;
-  robotHLPersonHL = robotHallwayL - personHallwayL;
-      
-    /*ROS_INFO("SAN FEATURES");
-    ROS_INFO("Person to Robot distance : %f", distanceFromPR2);
-    ROS_INFO("Distance travelled by Robot : %f", distanceTravelledbyPR2);
-    ROS_INFO("Person to hallway right : %f", personHallwayR);
-    ROS_INFO("Person to hallway left : %f", personHallwayL);
-    ROS_INFO("Robot to hallway right : %f", robotHallwayR);
-    ROS_INFO("Robot to hallway left : %f", robotHallwayL);
-    ROS_INFO("Hallway width : %f", width);*/
+    distanceFromPR2 =  sqrt(pow((personData.xdistance - robotPositionX),2) + pow((personData.ydistance - robotPositionY),2)); //2-D distance 
+    distanceTravelledbyPR2 = sqrt(pow((robotPositionX - intialPoseX ), 2) + pow( (robotPositionY - intialPoseY ) ,2));
+    distanceToGoal = sqrt(pow((goalPoseX - robotPositionX ), 2) + pow( (goalPoseY - robotPositionY) ,2)); 
+    personHallwayL = ( fabs( m*personData.xdistance - personData.ydistance + c ) ) / ( sqrt( pow(m,2) + 1 ) );
+    personHallwayR = width - personHallwayR;
+    robotHallwayL = ( fabs( m*robotPositionX - robotPositionY + c ) ) / ( sqrt( pow(m,2) + 1 ) );
+    robotHallwayR = width - robotHallwayR;
+    robotHLPersonHL = robotHallwayL - personHallwayL;
+    total_distance = sqrt(pow((goalPoseX - intialPoseX ), 2) + pow( (goalPoseY - intialPoseY) ,2));
+    normalized_time = distanceTravelledbyPR2/ total_distance;      
 
-    ss << currentTime;
+
+    ROS_INFO("Robot Position : (%f, %f)",robotPositionX, robotPositionY);
+    ROS_INFO("Human Position : (%f, %f)", personData.xdistance, personData.ydistance);
+    ROS_INFO("intial Position : (%f, %f)", intialPoseX, intialPoseY);
+    ROS_INFO("Goal Position: (%f, %f)", goalPoseX, goalPoseY);
+    ROS_INFO("Transformed m & c : %f & %f",m, c);
+    ROS_INFO("Hallway width : %f", width);
+    ROS_INFO("Robot HallwayL : %f", robotHallwayL);
+    ROS_INFO("Person HallwayL : %f", personHallwayL);
+
+    //ss << currentTime;
+    ss << normalized_time;
     stringData = ss.str();
     ss.str(std::string());
     SANfeatures.push_back(stringData);
@@ -270,6 +282,9 @@ void featureCalculator(float robotPositionX, float robotPositionY){
     ss.str(std::string());
     SANfeatures.push_back(stringData);
     ROS_INFO("robotHLPersonHL - %f - %s", robotHLPersonHL, stringData.c_str());
+
+    outfile << normalized_time << ", "<< robotHallwayL << ", " << "0" << ", " << distanceTravelledbyPR2 << ", "<< personHallwayL << ", " << "0" << ", " << "0" << ", "<< distanceFromPR2  << endl;
+
   }  
 }
 
@@ -297,22 +312,19 @@ void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstP
   //ROS_INFO("In pose estimate callback");
   geometry_msgs::PoseStamped goalPosition; 
 
-  /*FOR TESTING - SAN_NODES
-  int  classification;
-  float classifyProbability[4];*/
 
-  robotGoalPosition.x = 59.054;
-  robotGoalPosition.y = 10.257;
+  robotGoalPosition.x = 35.438;
+  robotGoalPosition.y = 10.129;
   robotGoalPosition.z = 0;
   
   goalPosition.header.frame_id = "map";
-  goalPosition.pose.position.x = 59.054;
-  goalPosition.pose.position.y = 10.257;
+  goalPosition.pose.position.x = 35.438;
+  goalPosition.pose.position.y = 10.129;
   goalPosition.pose.position.z = 0;
 
   goalPosition.pose.orientation.x = 0;
   goalPosition.pose.orientation.y = 0;
-  goalPosition.pose.orientation.z = -0.006;
+  goalPosition.pose.orientation.z = 0.006;
   goalPosition.pose.orientation.w = 0.999;
 
   goalPoseX = goalPosition.pose.position.x * 100;//In cm
@@ -330,52 +342,15 @@ void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstP
   //intialPoseX = transformedRobotInitialPose.point.x * 100;
   //intialPoseY = transformedRobotInitialPose.point.y * 100;
 
-  intialPoseX = poseX;
-  intialPoseY = poseY;
+  intialPoseX = poseX*100;
+  intialPoseY = poseY*100;
   
   //Start command to start the human simulation
   navMsg.data = "Start";
   start_cmd.publish(navMsg);
 
-  /*FOR TESTING SERVICE - SAN_NODES
-  featureCalculator((intialPoseX+0.02)*100, intialPoseY*100);
-
-  for(int i = 0;i < SANfeatures.size();i++){
-    ROS_INFO("Data: %s",SANfeatures[i].c_str());
-  }
-
-  ROS_INFO("future trajectory points: (%f , %f )", (intialPoseX+0.02) , intialPoseY*100 );
-  
-  san_nodes::Classify classifyScenario;
-  classifyScenario.request.sample = SANfeatures;
-  
-  if (clientClassify.call(classifyScenario))
-  {
-    classification = classifyScenario.response.classify_label;
-    ROS_INFO("Service for recognizing scenario: %d", classification);
-  }
-  else
-  {
-    ROS_ERROR("Failed to call service classifyScenario");
-  } 
-  classification = 0;
-
-  san_nodes::Appscore scoreScenario;
-  scoreScenario.request.sample = SANfeatures;
-  
-  if (clientAppscore.call(scoreScenario))
-  {
-    //Get the probability of the corresponding Scenario
-    classifyProbability[classification] = scoreScenario.response.classify_probs[classification];
-    ROS_INFO("Classification probability for scenario - %f", classifyProbability[classification]);
-  }
-  else
-  {
-    ROS_ERROR("Failed to call service Appscore");
-  }
-  
-  //Clear vector<string> features ;
-  SANfeatures.clear();*/
+  //Fro testiing services - SAN_NODES 
+  testflag = 1;
 }
 
 //For Simulation - Person Detection
@@ -485,6 +460,9 @@ void peoplePositionCallback(const people_msgs::PositionMeasurementArray::ConstPt
 }
 
 void hallwayDetectionCallback(const hallway::hallwayMsg::ConstPtr& msg){
+  //For testing service -  SAN_NODES
+  int  classification;
+  float classifyProbability[4];
   
   hallwayFound = 1;
   
@@ -516,26 +494,48 @@ void hallwayDetectionCallback(const hallway::hallwayMsg::ConstPtr& msg){
   MarkerPoints.pointL2 = pointL2;
   new_Marker.publish(MarkerPoints);
 
-
-  //Calculating slope ang intecept based on transformed points
-  /*m = (float)(hallwayPoints2.point.y   - hallwayPoints1.point.y)/(float)(hallwayPoints2.point.x - hallwayPoints1.point.x);
-  c = ( hallwayPoints1.point.y  -  m*hallwayPoints1.point.x ) * 100;  
-  
-  //In meters 
-  pointL1.x = hallwayPoints1.point.x ; 
-  pointL1.y = hallwayPoints1.point.y;
-    
-  pointL2.x = hallwayPoints2.point.x; 
-  pointL2.y = hallwayPoints2.point.y;
-  
-  MarkerPoints.pointL1 = pointL1;
-  MarkerPoints.pointL2 = pointL2;
-  new_Marker.publish(MarkerPoints);*/
-
   //ROS_INFO("Old Points: %f  , %f , %f  , %f ",msg->hallwayPointL1.x, msg->hallwayPointL1.y, msg->hallwayPointL2.x, msg->hallwayPointL2.y);
   //ROS_INFO("New Points: %f ,  %f , %f  , %f ",transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y);
 
+  //FOR TESTING SERVICE - SAN_NODES [Uncomment if block for testing services]
+  /*if (testflag == 1){ //Do when the pose estimate is set
+    
+    featureCalculator(poseX*100 , poseY*100);
   
+    san_nodes::Classify classifyScenario;
+    classifyScenario.request.sample = SANfeatures;
+  
+    if (clientClassify.call(classifyScenario))
+    {
+      classification = classifyScenario.response.classify_label;
+      ROS_INFO("Service for recognizing scenario: %d", classification);
+    }
+    else
+    {
+      ROS_ERROR("Failed to call service classifyScenario");
+    } 
+    //classification = 0;
+
+    san_nodes::Appscore scoreScenario;
+    scoreScenario.request.sample = SANfeatures;
+  
+    if (clientAppscore.call(scoreScenario))
+    {
+      //Get the probability of the corresponding Scenario
+      classifyProbability[classification] = scoreScenario.response.classify_probs[classification];
+      ROS_INFO("Classification probability for scenario - %f", classifyProbability[classification]);
+      //Write scenario and probabilities to file 'SimAppScore.txt'
+      appScorefile<<"Scenario: "<<classification <<". Probabilities: "<<classifyProbability[0] << ", "<< classifyProbability[1] << ", "<< classifyProbability[2] << ", "<< classifyProbability[3]<<endl;
+    }
+    else
+    {
+      ROS_ERROR("Failed to call service Appscore");
+    }
+  
+    //Clear vector<string> features ;
+    SANfeatures.clear();
+  }*/
+
 }
 
 
@@ -548,13 +548,13 @@ bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, 
   ROS_INFO("In Service");
   
   //Call featureCalculator function to get the SAn features as a vector of strings
-  /*robotFuturePosition.x = req.x;
+  robotFuturePosition.x = req.x;
   robotFuturePosition.y = req.y;
   robotFuturePosition.z = 0;
 
-  featureCalculator(transformedRobotPose.point.x * 100, transformedRobotPose.point.y * 100);*/
+  featureCalculator(transformedRobotPose.point.x * 100, transformedRobotPose.point.y * 100);
 
-  featureCalculator(req.x*100, req.y*100);
+  //featureCalculator(req.x*100, req.y*100);
 
   ROS_INFO("future trajectory points: (%f , %f )", req.x , req.y);
   
@@ -564,14 +564,12 @@ bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, 
   if (clientClassify.call(classifyScenario))
   {
    	classification = classifyScenario.response.classify_label;
-    ROS_INFO("Service for recognizing scenario: %d", classification);
+    //ROS_INFO("Service for recognizing scenario: %d", classification);
   }
   else
   {
-    ROS_ERROR("Failed to call service classifyScenario");
+    //ROS_ERROR("Failed to call service classifyScenario");
   }	
-    
-  //classification = 0;
 
   san_nodes::Appscore scoreScenario;
   scoreScenario.request.sample = SANfeatures;
@@ -580,19 +578,21 @@ bool featureExtractionService(san_feature_extractor::Trajectory::Request  &req, 
   {
     //Get the probability of the corresponding Scenario
     classifyProbability[classification] = scoreScenario.response.classify_probs[classification];
-    ROS_INFO("Classification probability for scenario - %f", classifyProbability[classification]);
+    //ROS_INFO("Classification probability for scenario - %f", classifyProbability[classification]);
+    //Write scenario and probabilities to file 'SimAppScore.txt'
+    appScorefile<<"Scenario: "<<classification <<". Probabilities: "<<classifyProbability[0] << ", "<< classifyProbability[1] << ", "<< classifyProbability[2] << ", "<< classifyProbability[3]<<endl;
   }
   else
   {
-    ROS_ERROR("Failed to call service Appscore");
+    //ROS_ERROR("Failed to call service Appscore");
   }
   
   //Clear vector<string> features ;
   SANfeatures.clear();
   
   res.prob = classifyProbability[classification];
-  ROS_INFO("request: x=%ld, y=%ld", (long int)req.x, (long int)req.y);
-  ROS_INFO("sending back response: [%ld]", (long int)res.prob);
+  //ROS_INFO("request: x=%ld, y=%ld", (long int)req.x, (long int)req.y);
+  //ROS_INFO("sending back response: [%ld]", (long int)res.prob);
   return true;
 }
 
