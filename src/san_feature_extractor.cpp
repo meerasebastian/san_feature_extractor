@@ -60,8 +60,8 @@ float odom_0_OriginX = 0, odom_0_OriginY = 0, odom_1_OriginX = 0, odom_1_OriginY
 float m = 0 ,c = 0, width = 0;
 float poseX = 0, poseY = 0, intialPoseX = 0 , intialPoseY = 0, goalPoseX = 0 , goalPoseY = 0; 
 
-ofstream outfile ("SimDataset.txt");
-ofstream appScorefile ("SimAppScore.txt");
+ofstream outfile ("Dataset.txt");
+ofstream appScorefile ("AppScore.txt");
 
 //geometry_msgs::Point robotPosition;
 geometry_msgs::Point robotGoalPosition;
@@ -313,19 +313,19 @@ void initialPoseCallback( const geometry_msgs::PoseWithCovarianceStamped::ConstP
   geometry_msgs::PoseStamped goalPosition; 
 
 
-  robotGoalPosition.x = 35.438;
-  robotGoalPosition.y = 10.129;
+  robotGoalPosition.x = 40.438; //22.41;
+  robotGoalPosition.y =  10.129; //10.80;
   robotGoalPosition.z = 0;
   
   goalPosition.header.frame_id = "map";
-  goalPosition.pose.position.x = 35.438;
-  goalPosition.pose.position.y = 10.129;
+  goalPosition.pose.position.x = 40.438; //22.41;
+  goalPosition.pose.position.y = 10.129; //10.80;
   goalPosition.pose.position.z = 0;
 
   goalPosition.pose.orientation.x = 0;
   goalPosition.pose.orientation.y = 0;
-  goalPosition.pose.orientation.z = 0.006;
-  goalPosition.pose.orientation.w = 0.999;
+  goalPosition.pose.orientation.z = 0.006; //0.999;
+  goalPosition.pose.orientation.w =  0.999; //0.002;
 
   goalPoseX = goalPosition.pose.position.x * 100;//In cm
   goalPoseY = goalPosition.pose.position.y * 100;//In cm
@@ -497,7 +497,7 @@ void hallwayDetectionCallback(const hallway::hallwayMsg::ConstPtr& msg){
   //ROS_INFO("Old Points: %f  , %f , %f  , %f ",msg->hallwayPointL1.x, msg->hallwayPointL1.y, msg->hallwayPointL2.x, msg->hallwayPointL2.y);
   //ROS_INFO("New Points: %f ,  %f , %f  , %f ",transformedHallwayPoints1.point.x, transformedHallwayPoints1.point.y, transformedHallwayPoints2.point.x, transformedHallwayPoints2.point.y);
 
-  //FOR TESTING SERVICE - SAN_NODES [Uncomment if block for testing services]
+  //FOR TESTING SERVICE IN TRADITIONAL PLANNER- SAN_NODES [Uncomment if block for testing services]
   /*if (testflag == 1){ //Do when the pose estimate is set
     
     featureCalculator(poseX*100 , poseY*100);
