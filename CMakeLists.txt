@@ -58,8 +58,6 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate services in the 'srv' folder
  add_service_files( 	
    FILES
-   TrajectoryPoint.srv
-   Features.srv
    Trajectory.srv 
    
  )
@@ -139,7 +137,6 @@ include_directories(
 add_executable(san_feature_extractor src/san_feature_extractor.cpp)
 add_executable(newMarkers src/newMarkers.cpp)
 add_executable(tfBroadcaster src/tfBroadcaster.cpp)
-#add_executable(tfBroadcasterMapWorld src/tfBroadcasterMapWorld.cpp)
 
 
 ## Add cmake target dependencies of the executable
